@@ -9,15 +9,19 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import java.net.URI;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @SpringBootApplication
 public class WebcrawlerApplication implements CommandLineRunner
 {
+    private static final int WORKER_COUNT = 20;
     private static final PageFetcher PAGE_FETCHER = new PageFetcher();
     private static final Queue<PageResult> COMPLETED_RESULTS = new ConcurrentLinkedQueue<>();
-    private static Set<String> foundUrls = new HashSet<>();
+    private static final Set<String> foundUrls = ConcurrentHashMap.newKeySet();
     private static final Queue<String> queueToCrawl = new ConcurrentLinkedQueue<>();
+    private static final Logger LOG = LoggerFactory.getLogger(WebcrawlerApplication.class);
 
     public static void main(String[] args)
     {
@@ -25,34 +29,62 @@ public class WebcrawlerApplication implements CommandLineRunner
     }
 
     @Override
-    public void run(String... args)
+    public void run(String... args) throws Exception
     {
-        //Validate there is 1 argument and it is a valid URL
         if (args.length != 1 || !isValidURL(args[0]))
         {
             throw new IllegalArgumentException("Usage: webcrawler <valid-http-or-https-url>");
         }
+
         String seedUrl = args[0].split("#", 2)[0];
         String allowedHost = URI.create(seedUrl).getHost();
 
-        // Claim and queue the starting URL.
         if (foundUrls.add(seedUrl))
         {
             queueToCrawl.add(seedUrl);
         }
 
-        // Process queued URLs, including those discovered along the way.
-        String nextUrl;
-        while ((nextUrl = queueToCrawl.poll()) != null)
+        try (ExecutorService workers = Executors.newFixedThreadPool(WORKER_COUNT))
         {
-            crawl(nextUrl, allowedHost);
+            processQueuedPages(allowedHost, workers);
         }
+
+        presentResults();
+    }
+
+    private static void presentResults()
+    {
+        List<PageResult> successfulResults = new ArrayList<>();
+        List<PageResult> unsuccessfulResults = new ArrayList<>();
         for (PageResult pageResult : COMPLETED_RESULTS)
         {
-            System.out.println("Visited: " + pageResult.url());
-            for (String listedUrl : pageResult.links())
+            if (pageResult.crawlOutcome() == CrawlOutcome.SUCCEEDED)
             {
-                System.out.println("LinkFound: " + listedUrl);
+                successfulResults.add(pageResult);
+            }
+            else
+            {
+                unsuccessfulResults.add(pageResult);
+            }
+        }
+        successfulResults.sort(Comparator.comparing(PageResult::url));
+        unsuccessfulResults.sort(Comparator.comparing(PageResult::url));
+        LOG.info("Total URLs attempted: {}", successfulResults.size() + unsuccessfulResults.size());
+        LOG.info("Pages inspected successfully: {}", successfulResults.size());
+        LOG.info("Failed attempts: {}", unsuccessfulResults.size());
+        LOG.info("Discovered URLs: {} | Completed results: {}", foundUrls.size(), COMPLETED_RESULTS.size());
+        System.out.println("Here are the successful results:");
+        for(PageResult pageResult : successfulResults){
+            System.out.println("Visited: " + pageResult.url());
+            for (String link : pageResult.links()) {
+                System.out.println("  " + link);
+            }
+        }
+        System.out.println("Here are the unsuccessful results:");
+        for(PageResult pageResult : unsuccessfulResults){
+            System.out.println("Visited: " + pageResult.url());
+            for (String link : pageResult.links()) {
+                System.out.println("  " + link);
             }
         }
 
@@ -60,14 +92,14 @@ public class WebcrawlerApplication implements CommandLineRunner
 
     private static void crawl(String pageUrl, String allowedHost)
     {
-        System.out.println("Crawling: " + pageUrl);
+        LOG.debug("Crawling: {}", pageUrl);
 
         // call the retrieveHTML function to fetch HTML of the current page
         FetchResult fetchResult = PAGE_FETCHER.retrieveHTML(pageUrl);
 
         if (fetchResult.document() != null)
         {
-            crawlPage(fetchResult, pageUrl, allowedHost);
+            inspectPage(fetchResult, pageUrl, allowedHost);
         }
         else
         {
@@ -78,7 +110,7 @@ public class WebcrawlerApplication implements CommandLineRunner
         }
     }
 
-    private static void crawlPage(FetchResult fetchResult, String pageUrl, String allowedHost)
+    private static void inspectPage(FetchResult fetchResult, String pageUrl, String allowedHost)
     {
         List<String> linksInPage = new ArrayList<>();
 
@@ -109,5 +141,38 @@ public class WebcrawlerApplication implements CommandLineRunner
         UrlValidator validator = new UrlValidator(new String[] { "http", "https" }, UrlValidator.ALLOW_LOCAL_URLS);
 
         return validator.isValid(url);
+    }
+
+    private static void processQueuedPages(String allowedHost, ExecutorService workers)
+            throws InterruptedException, ExecutionException
+    {
+        CompletionService<Void> completions = new ExecutorCompletionService<>(workers);
+
+        int outstanding = 0;
+
+        while (!queueToCrawl.isEmpty() || outstanding > 0)
+        {
+            // Fill available worker slots.
+            while (outstanding < WORKER_COUNT)
+            {
+                String pageUrl = queueToCrawl.poll();
+
+                if (pageUrl == null)
+                {
+                    break;
+                }
+
+                completions.submit(() -> crawl(pageUrl, allowedHost), null);
+
+                outstanding++;
+            }
+
+            if (outstanding > 0)
+            {
+                // Wait for a completed task and surface unexpected failures.
+                completions.take().get();
+                outstanding--;
+            }
+        }
     }
 }
