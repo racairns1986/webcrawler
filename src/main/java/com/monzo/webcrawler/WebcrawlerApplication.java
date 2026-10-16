@@ -4,21 +4,14 @@ import org.apache.commons.validator.routines.UrlValidator;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import java.net.URI;
-import java.util.*;
-import java.util.concurrent.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 @SpringBootApplication
 public class WebcrawlerApplication implements CommandLineRunner
 {
     private static final int WORKER_COUNT = 20;
-    private static final PageFetcher PAGE_FETCHER = new PageFetcher();
-    private static final Queue<PageResult> COMPLETED_RESULTS = new ConcurrentLinkedQueue<>();
-    private static final Set<String> foundUrls = ConcurrentHashMap.newKeySet();
-    private static final Queue<String> queueToCrawl = new ConcurrentLinkedQueue<>();
-    private static final Logger LOG = LoggerFactory.getLogger(WebcrawlerApplication.class);
 
     public static void main(String[] args)
     {
@@ -33,27 +26,16 @@ public class WebcrawlerApplication implements CommandLineRunner
             throw new IllegalArgumentException("Usage: webcrawler <valid-http-or-https-url>");
         }
 
-        String seedUrl = args[0].split("#", 2)[0];
-        String allowedHost = URI.create(seedUrl).getHost();
+        List<PageResult> results = new Crawler(args[0], new PageFetcher(), WORKER_COUNT).crawl();
 
-        if (foundUrls.add(seedUrl))
-        {
-            queueToCrawl.add(seedUrl);
-        }
-
-        try (ExecutorService workers = Executors.newFixedThreadPool(WORKER_COUNT))
-        {
-            processQueuedPages(allowedHost, workers);
-        }
-
-        presentResults();
+        presentResults(results);
     }
 
-    private static void presentResults()
+    private static void presentResults(List<PageResult> results)
     {
         List<PageResult> successfulResults = new ArrayList<>();
         List<PageResult> unsuccessfulResults = new ArrayList<>();
-        for (PageResult pageResult : COMPLETED_RESULTS)
+        for (PageResult pageResult : results)
         {
             if (pageResult.crawlOutcome() == CrawlOutcome.SUCCEEDED)
             {
@@ -93,25 +75,6 @@ public class WebcrawlerApplication implements CommandLineRunner
         IO.println("Total URLs attempted: %d".formatted(successfulResults.size() + unsuccessfulResults.size()));
         IO.println("Pages inspected successfully: %d".formatted(successfulResults.size()));
         IO.println("Pages not inspected: %d".formatted(unsuccessfulResults.size()));
-
-        LOG.debug("Discovered URLs: {} | Completed results: {}", foundUrls.size(), COMPLETED_RESULTS.size());
-    }
-
-    private static void crawl(String pageUrl, String allowedHost)
-    {
-        PageResult pageResult = PAGE_FETCHER.retrieveHTML(pageUrl);
-
-        for (String url : pageResult.links())
-        {
-            String nextHost = URI.create(url).getHost();
-
-            if (allowedHost.equalsIgnoreCase(nextHost) && foundUrls.add(url))
-            {
-                queueToCrawl.add(url);
-            }
-        }
-
-        COMPLETED_RESULTS.add(pageResult);
     }
 
     private static boolean isValidURL(String url)
@@ -119,38 +82,5 @@ public class WebcrawlerApplication implements CommandLineRunner
         UrlValidator validator = new UrlValidator(new String[] { "http", "https" }, UrlValidator.ALLOW_LOCAL_URLS);
 
         return validator.isValid(url);
-    }
-
-    private static void processQueuedPages(String allowedHost, ExecutorService workers)
-            throws InterruptedException, ExecutionException
-    {
-        CompletionService<Void> completions = new ExecutorCompletionService<>(workers);
-
-        int outstanding = 0;
-
-        while (!queueToCrawl.isEmpty() || outstanding > 0)
-        {
-            // Fill available worker slots.
-            while (outstanding < WORKER_COUNT)
-            {
-                String pageUrl = queueToCrawl.poll();
-
-                if (pageUrl == null)
-                {
-                    break;
-                }
-
-                completions.submit(() -> crawl(pageUrl, allowedHost), null);
-
-                outstanding++;
-            }
-
-            if (outstanding > 0)
-            {
-                // Wait for a completed task and surface unexpected failures.
-                completions.take().get();
-                outstanding--;
-            }
-        }
     }
 }
