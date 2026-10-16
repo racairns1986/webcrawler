@@ -9,6 +9,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
@@ -43,17 +44,29 @@ public class PageFetcher
             {
                 String target = resolveRedirectTarget(pageUrl, response.header("Location"));
                 LOG.info("Redirected: {} | HTTP {} | Location: {}", pageUrl, statusCode, target);
-                String normalizedTarget =
-                        target == null ? null : considerLink(target);
+                String normalizedTarget;
 
-                List<String> links = normalizedTarget == null
-                        ? List.of()
-                        : List.of(normalizedTarget);
+                if (target == null)
+                {
+                    normalizedTarget = null;
+                }
+                else
+                {
+                    normalizedTarget = considerLink(target);
+                }
 
-                return new PageResult(
-                        pageUrl, links, CrawlOutcome.REDIRECTED,
-                        statusCode, Instant.now()
-                );
+                List<String> links;
+
+                if (normalizedTarget == null)
+                {
+                    links = List.of();
+                }
+                else
+                {
+                    links = List.of(normalizedTarget);
+                }
+
+                return new PageResult(pageUrl, links, CrawlOutcome.REDIRECTED, statusCode, Instant.now());
             }
 
             Document document = response.parse();
@@ -63,18 +76,18 @@ public class PageFetcher
         catch (HttpStatusException e)
         {
             LOG.warn("HTTP failure: {} | HTTP {} | {}", pageUrl, e.getStatusCode(), e.getMessage());
-            return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, e.getStatusCode(),  Instant.now());
+            return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, e.getStatusCode(), Instant.now());
         }
         catch (SocketTimeoutException | HttpTimeoutException e)
         {
             LOG.warn("Timed out: {} | HTTP status: {} | {}", pageUrl, statusCode, e.getMessage());
-            return new PageResult(pageUrl, List.of(), CrawlOutcome.TIMED_OUT, statusCode,  Instant.now());
+            return new PageResult(pageUrl, List.of(), CrawlOutcome.TIMED_OUT, statusCode, Instant.now());
         }
         catch (IOException | IllegalArgumentException e)
         {
             LOG.warn("Fetch failed: {} | HTTP status: {} | {} | {}", pageUrl, statusCode, e.getClass().getSimpleName(),
                     e.getMessage());
-            return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, statusCode,  Instant.now());
+            return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, statusCode, Instant.now());
         }
         finally
         {
@@ -114,8 +127,7 @@ public class PageFetcher
                 linksInPage.add(normalizedUrl);
             }
         }
-        return new PageResult(pageUrl, linksInPage, CrawlOutcome.SUCCEEDED, statusCode,
-                Instant.now());
+        return new PageResult(pageUrl, linksInPage, CrawlOutcome.SUCCEEDED, statusCode, Instant.now());
     }
 
     private static String considerLink(String candidate)
