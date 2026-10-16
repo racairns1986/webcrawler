@@ -31,6 +31,7 @@ public class WebcrawlerApplication implements CommandLineRunner
         presentResults(results);
     }
 
+    //Prints results with a small summary section at end.
     private static void presentResults(List<PageResult> results)
     {
         List<PageResult> successfulResults = new ArrayList<>();

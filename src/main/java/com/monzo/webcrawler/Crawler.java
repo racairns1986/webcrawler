@@ -15,12 +15,9 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Crawls every page on the seed URL's host.
- * <p>
- * An instance holds the state of exactly one crawl (the frontier, the set of
- * discovered URLs and the completed results), so each crawl starts clean.
- */
+
+/*Crawls every page on the seed URL's host.
+An instance holds the state of exactly one crawl, each crawl starts clean.*/
 public class Crawler
 {
     private static final Logger LOG = LoggerFactory.getLogger(Crawler.class);
@@ -50,19 +47,16 @@ public class Crawler
         queueToCrawl.add(normalizedSeed);
     }
 
-    /**
-     * Crawls until no URL is queued and no worker is busy, then returns one
-     * result per URL attempted.
-     */
+
+    /*Crawls until no URL is queued and no worker is busy,
+    then returns one result per URL attempted.*/
     public List<PageResult> crawl() throws InterruptedException, ExecutionException
     {
         try (ExecutorService workers = Executors.newFixedThreadPool(workerCount))
         {
             processQueuedPages(workers);
         }
-
         LOG.debug("Discovered URLs: {} | Completed results: {}", foundUrls.size(), completedResults.size());
-
         return List.copyOf(completedResults);
     }
 
@@ -91,7 +85,7 @@ public class Crawler
 
         while (!queueToCrawl.isEmpty() || outstanding > 0)
         {
-            // Fill available worker slots.
+            // Use all workers.
             while (outstanding < workerCount)
             {
                 String pageUrl = queueToCrawl.poll();

@@ -9,7 +9,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
@@ -96,6 +95,10 @@ public class PageFetcher
         }
     }
 
+
+    /*Resolves the redirect's Location header against the requested URL,
+    because the target may be relative rather than a complete URL.
+    Returns null if the header is missing, blank or cannot be parsed.*/
     private static String resolveRedirectTarget(String requestUrl, String location)
     {
         if (location == null || location.isBlank())
@@ -113,6 +116,7 @@ public class PageFetcher
         }
     }
 
+    //Inspect page and return the PageResult
     private PageResult inspectPage(String pageUrl, Integer statusCode, Document document)
     {
         List<String> linksInPage = new ArrayList<>();
@@ -130,6 +134,8 @@ public class PageFetcher
         return new PageResult(pageUrl, linksInPage, CrawlOutcome.SUCCEEDED, statusCode, Instant.now());
     }
 
+/*  Remove fragments from links. Removing them prevents
+    repeated fetches of the same page for different section links.*/
     private static String considerLink(String candidate)
     {
         if (!isValidURL(candidate))
