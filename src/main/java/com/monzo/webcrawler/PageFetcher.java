@@ -62,19 +62,19 @@ public class PageFetcher
         }
         catch (HttpStatusException e)
         {
-            LOG.warn("HTTP failure: {} | HTTP {} | {}", pageUrl, statusCode, e.getMessage());
+            LOG.warn("HTTP failure: {} | HTTP {} | {}", pageUrl, e.getStatusCode(), e.getMessage());
             return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, e.getStatusCode(),  Instant.now());
         }
         catch (SocketTimeoutException | HttpTimeoutException e)
         {
             LOG.warn("Timed out: {} | HTTP status: {} | {}", pageUrl, statusCode, e.getMessage());
-            return new PageResult(pageUrl, List.of(), CrawlOutcome.TIMED_OUT, null,  Instant.now());
+            return new PageResult(pageUrl, List.of(), CrawlOutcome.TIMED_OUT, statusCode,  Instant.now());
         }
         catch (IOException | IllegalArgumentException e)
         {
             LOG.warn("Fetch failed: {} | HTTP status: {} | {} | {}", pageUrl, statusCode, e.getClass().getSimpleName(),
                     e.getMessage());
-            return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, null,  Instant.now());
+            return new PageResult(pageUrl, List.of(), CrawlOutcome.FAILED, statusCode,  Instant.now());
         }
         finally
         {

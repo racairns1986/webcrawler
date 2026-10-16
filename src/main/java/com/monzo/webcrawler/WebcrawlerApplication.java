@@ -67,33 +67,32 @@ public class WebcrawlerApplication implements CommandLineRunner
         successfulResults.sort(Comparator.comparing(PageResult::url));
         unsuccessfulResults.sort(Comparator.comparing(PageResult::url));
 
-        System.out.println("Here are the successful results:");
+        IO.println("Here are the successful results:");
         for (PageResult pageResult : successfulResults)
         {
-            System.out.println("Visited: " + pageResult.url());
+            IO.println("Visited: " + pageResult.url());
             for (String link : pageResult.links())
             {
-                System.out.println("  " + link);
+                IO.println("  " + link);
             }
         }
-        System.out.println("Here are the unsuccessful results:");
+        IO.println("Here are the unsuccessful results:");
         for (PageResult pageResult : unsuccessfulResults)
         {
-            System.out.printf(
-                    "Attempted: %s | Outcome: %s | HTTP status: %s%n",
-                    pageResult.url(),
-                    pageResult.crawlOutcome(),
-                    pageResult.statusCode()
+            IO.println(
+                    "Attempted: %s | Outcome: %s | HTTP status: %s".formatted(pageResult.url(),
+                            pageResult.crawlOutcome(),
+                            pageResult.statusCode())
             );
             for (String link : pageResult.links())
             {
-                System.out.println("  " + link);
+                IO.println("  " + link);
             }
         }
 
-        System.out.printf("Total URLs attempted: %d%n", successfulResults.size() + unsuccessfulResults.size());
-        System.out.printf("Pages inspected successfully: %d%n", successfulResults.size());
-        System.out.printf("Failed attempts: %d%n", unsuccessfulResults.size());
+        IO.println("Total URLs attempted: %d".formatted(successfulResults.size() + unsuccessfulResults.size()));
+        IO.println("Pages inspected successfully: %d".formatted(successfulResults.size()));
+        IO.println("Pages not inspected: %d".formatted(unsuccessfulResults.size()));
 
         LOG.debug("Discovered URLs: {} | Completed results: {}", foundUrls.size(), COMPLETED_RESULTS.size());
     }
